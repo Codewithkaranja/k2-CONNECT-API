@@ -1,15 +1,30 @@
 async function handlePayment() {
-    const phone = document.getElementById('phone').value;
+    const phoneInput = document.getElementById('phone').value.trim();
     const amount = document.getElementById('amount').value;
     const status = document.getElementById('status');
     const btn = document.getElementById('payBtn');
 
-    if(!phone || !amount) return alert("Please fill all fields");
+    // 1. Validation
+    if (!phoneInput || !amount) {
+        return alert("Please fill in both phone number and amount");
+    }
 
+    // Ensure phone starts with +254 (Kopo Kopo requirement)
+    let phone = phoneInput;
+    if (phone.startsWith('0')) {
+        phone = '+254' + phone.slice(1);
+    } else if (phone.startsWith('7') || phone.startsWith('1')) {
+        phone = '+254' + phone;
+    }
+
+    // 2. UI Feedback
     btn.disabled = true;
-    status.innerText = "Requesting payment...";
+    btn.innerText = "Processing...";
+    status.style.color = "blue";
+    status.innerText = "Requesting M-Pesa prompt...";
 
     try {
+        // Since frontend is hosted on the same server, '/api/pay' works perfectly
         const response = await fetch('/api/pay', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -19,13 +34,19 @@ async function handlePayment() {
         const data = await response.json();
         
         if (response.ok) {
-            status.innerText = "Check your phone for the M-Pesa PIN prompt!";
+            status.style.color = "green";
+            status.innerText = "✅ Request sent! Check your phone for the M-Pesa PIN prompt.";
         } else {
-            status.innerText = "Error: " + data.error;
+            status.style.color = "red";
+            status.innerText = "❌ Error: " + (data.error || "Payment failed");
+            console.error("Backend Error:", data);
         }
     } catch (err) {
-        status.innerText = "Server error. Is the backend running?";
+        status.style.color = "red";
+        status.innerText = "❌ Connection error. Please check your internet.";
+        console.error("Fetch Error:", err);
     } finally {
         btn.disabled = false;
+        btn.innerText = "Pay Now";
     }
 }
