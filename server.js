@@ -3,15 +3,33 @@ const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
 const qs = require('qs');
+const mongoose = require('mongoose');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
+
+// --- 1. MongoDB Connection ---
+// Use the MONGO_URI from your Render Environment variables
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log("📦 Connected to MongoDB Atlas"))
+    .catch(err => console.error("❌ MongoDB Connection Error:", err));
+
+// Define a Transaction Schema to track payments
+const transactionSchema = new mongoose.Schema({
+    phone: String,
+    amount: String,
+    status: { type: String, default: 'PENDING' },
+    checkout_id: String, // The unique ID from Kopo Kopo
+    mpesa_receipt: String,
+    createdAt: { type: Date, default: Date.now }
+});
+const Transaction = mongoose.model('Transaction', transactionSchema);
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static('docs')); 
 
-// --- Helper: Get OAuth Token ---
+// --- 2. Helper: Get OAuth Token ---
 async function getAccessToken() {
     try {
         const data = qs.stringify({
@@ -20,24 +38,22 @@ async function getAccessToken() {
             grant_type: 'client_credentials'
         });
         
-        // FIXED: Added full path /oauth/token
         const response = await axios.post('https://sandbox.kopokopo.com', data, {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
         });
         return response.data.access_token;
     } catch (error) {
-        console.error("Token Error Details:", error.response?.data || error.message);
+        console.error("Token Error:", error.response?.data || error.message);
         throw new Error("Authentication failed");
     }
 }
 
-// --- Route: Initiate Payment ---
+// --- 3. Route: Initiate Payment ---
 app.post('/api/pay', async (req, res) => {
     try {
         const { phone, amount } = req.body;
         const token = await getAccessToken();
 
-        // Ensure MERCHANT_NUMBER starts with K
         let rawTill = process.env.MERCHANT_NUMBER.toString().replace(/\D/g, '');
         let till = rawTill.startsWith('K') ? rawTill : `K${rawTill}`;
 
@@ -51,16 +67,12 @@ app.post('/api/pay', async (req, res) => {
                 email: "customer@example.com"
             },
             amount: { currency: "KES", value: amount },
-            metadata: {
-                customer_id: "12345",
-                notes: "Website Purchase"
-            },
+            metadata: { notes: "Website Purchase" },
             _links: { 
                 callback_url: process.env.CALLBACK_URL 
             }
         };
 
-        // FIXED: Added full path /api/v1/incoming_payments
         const response = await axios.post(
             'https://sandbox.kopokopo.com',
             paymentPayload,
@@ -73,9 +85,20 @@ app.post('/api/pay', async (req, res) => {
             }
         );
 
+        // Extract ID from the location header (e.g., .../incoming_payments/ID)
+        const checkoutId = response.headers.location.split('/').pop();
+
+        // Save the PENDING transaction to MongoDB
+        const newTx = new Transaction({
+            phone,
+            amount,
+            checkout_id: checkoutId
+        });
+        await newTx.save();
+
         res.status(201).json({ 
             message: "Check your phone for the PIN prompt!", 
-            location: response.headers.location 
+            transactionId: newTx._id 
         });
 
     } catch (error) {
@@ -87,11 +110,29 @@ app.post('/api/pay', async (req, res) => {
     }
 });
 
-// --- Route: Callback ---
-app.post('/callback', (req, res) => {
-    console.log("✅ Kopo Kopo Notification Received:");
-    console.log(JSON.stringify(req.body, null, 2));
-    res.sendStatus(200); 
+// --- 4. Route: Callback (Updates MongoDB) ---
+app.post('/callback', async (req, res) => {
+    try {
+        const payload = req.body.data;
+        const attributes = payload.attributes;
+        
+        const status = attributes.status; // e.g., "Success" or "Failed"
+        const checkoutId = payload.id;
+        const receipt = attributes.event.resource.reference || "N/A";
+
+        // Find the transaction in MongoDB and update it
+        const updatedTx = await Transaction.findOneAndUpdate(
+            { checkout_id: checkoutId },
+            { status: status, mpesa_receipt: receipt },
+            { new: true }
+        );
+
+        console.log(`✅ Payment Processed: ${status} | Receipt: ${receipt}`);
+        res.sendStatus(200); 
+    } catch (err) {
+        console.error("Callback Processing Error:", err);
+        res.status(500).send("Error updating transaction");
+    }
 });
 
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
