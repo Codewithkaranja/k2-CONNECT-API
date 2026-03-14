@@ -5,7 +5,7 @@ const cors = require('cors');
 const qs = require('qs');
 
 const app = express();
-const PORT = process.env.PORT || 10000; // Render usually uses 10000
+const PORT = process.env.PORT || 10000;
 
 app.use(cors());
 app.use(express.json());
@@ -20,13 +20,13 @@ async function getAccessToken() {
             grant_type: 'client_credentials'
         });
         
-        // FIXED: Added /oauth/token to the URL
+        // FIXED: Added full path /oauth/token
         const response = await axios.post('https://sandbox.kopokopo.com', data, {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
         });
         return response.data.access_token;
     } catch (error) {
-        console.error("Token Error:", error.response?.data || error.message);
+        console.error("Token Error Details:", error.response?.data || error.message);
         throw new Error("Authentication failed");
     }
 }
@@ -37,9 +37,9 @@ app.post('/api/pay', async (req, res) => {
         const { phone, amount } = req.body;
         const token = await getAccessToken();
 
-        // Ensure MERCHANT_NUMBER exists and starts with K
-        let till = process.env.MERCHANT_NUMBER.toString().replace(/\D/g, '');
-        if (!till.startsWith('K')) till = `K${till}`;
+        // Ensure MERCHANT_NUMBER starts with K
+        let rawTill = process.env.MERCHANT_NUMBER.toString().replace(/\D/g, '');
+        let till = rawTill.startsWith('K') ? rawTill : `K${rawTill}`;
 
         const paymentPayload = {
             payment_channel: "M-PESA STK Push",
@@ -47,7 +47,7 @@ app.post('/api/pay', async (req, res) => {
             subscriber: {
                 first_name: "Customer",
                 last_name: "User",
-                phone_number: phone, // Must be +254...
+                phone_number: phone, 
                 email: "customer@example.com"
             },
             amount: { currency: "KES", value: amount },
@@ -60,7 +60,7 @@ app.post('/api/pay', async (req, res) => {
             }
         };
 
-        // FIXED: Added /api/v1/incoming_payments to the URL
+        // FIXED: Added full path /api/v1/incoming_payments
         const response = await axios.post(
             'https://sandbox.kopokopo.com',
             paymentPayload,
@@ -73,14 +73,13 @@ app.post('/api/pay', async (req, res) => {
             }
         );
 
-        // Kopo Kopo returns 201 Created and a location header
         res.status(201).json({ 
             message: "Check your phone for the PIN prompt!", 
             location: response.headers.location 
         });
 
     } catch (error) {
-        console.error("Payment Error Payload:", error.response?.data || error.message);
+        console.error("STK Push Error:", error.response?.data || error.message);
         res.status(500).json({ 
             error: "Failed to trigger STK Push", 
             details: error.response?.data || error.message 
@@ -88,14 +87,11 @@ app.post('/api/pay', async (req, res) => {
     }
 });
 
-// --- Route: Callback (Status updates) ---
+// --- Route: Callback ---
 app.post('/callback', (req, res) => {
     console.log("✅ Kopo Kopo Notification Received:");
     console.log(JSON.stringify(req.body, null, 2));
-    
-    // Logic to update your database would go here
-    
-    res.sendStatus(200); // Always tell K2 you got the message
+    res.sendStatus(200); 
 });
 
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
