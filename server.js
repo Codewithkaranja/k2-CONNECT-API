@@ -63,7 +63,7 @@ async function getAccessToken() {
         ).toString("base64");
 
         const response = await axios.post(
-            "https://sandbox.kopokopo.com/oauth/token",
+            "https://api.kopokopo.com/oauth/token",
             qs.stringify({ grant_type: "client_credentials" }),
             {
                 headers: {
@@ -134,7 +134,7 @@ app.post("/api/pay", async (req,res)=>{
 
 
         const response = await axios.post(
-            "https://sandbox.kopokopo.com/api/v1/incoming_payments",
+            "https://api.kopokopo.com/api/v1/incoming_payments",
             payload,
             {
                 headers:{
