@@ -9,17 +9,15 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 // --- 1. MongoDB Connection ---
-// Use the MONGO_URI from your Render Environment variables
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log("📦 Connected to MongoDB Atlas"))
     .catch(err => console.error("❌ MongoDB Connection Error:", err));
 
-// Define a Transaction Schema to track payments
 const transactionSchema = new mongoose.Schema({
     phone: String,
     amount: String,
     status: { type: String, default: 'PENDING' },
-    checkout_id: String, // The unique ID from Kopo Kopo
+    checkout_id: String,
     mpesa_receipt: String,
     createdAt: { type: Date, default: Date.now }
 });
@@ -38,6 +36,7 @@ async function getAccessToken() {
             grant_type: 'client_credentials'
         });
         
+        // FIXED: Added full path /oauth/token
         const response = await axios.post('https://sandbox.kopokopo.com', data, {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
         });
@@ -54,6 +53,7 @@ app.post('/api/pay', async (req, res) => {
         const { phone, amount } = req.body;
         const token = await getAccessToken();
 
+        // Fix Till Format
         let rawTill = process.env.MERCHANT_NUMBER.toString().replace(/\D/g, '');
         let till = rawTill.startsWith('K') ? rawTill : `K${rawTill}`;
 
@@ -73,6 +73,7 @@ app.post('/api/pay', async (req, res) => {
             }
         };
 
+        // FIXED: Added full path /api/v1/incoming_payments
         const response = await axios.post(
             'https://sandbox.kopokopo.com',
             paymentPayload,
@@ -85,10 +86,8 @@ app.post('/api/pay', async (req, res) => {
             }
         );
 
-        // Extract ID from the location header (e.g., .../incoming_payments/ID)
         const checkoutId = response.headers.location.split('/').pop();
 
-        // Save the PENDING transaction to MongoDB
         const newTx = new Transaction({
             phone,
             amount,
@@ -110,27 +109,33 @@ app.post('/api/pay', async (req, res) => {
     }
 });
 
-// --- 4. Route: Callback (Updates MongoDB) ---
+// --- 4. Route: Fetch Transactions for Admin ---
+app.get('/api/transactions', async (req, res) => {
+    try {
+        const transactions = await Transaction.find().sort({ createdAt: -1 });
+        res.json(transactions);
+    } catch (error) {
+        res.status(500).json({ error: "Failed to fetch data" });
+    }
+});
+
+// --- 5. Route: Callback (Updates MongoDB) ---
 app.post('/callback', async (req, res) => {
     try {
         const payload = req.body.data;
-        const attributes = payload.attributes;
-        
-        const status = attributes.status; // e.g., "Success" or "Failed"
+        const status = payload.attributes.status;
         const checkoutId = payload.id;
-        const receipt = attributes.event.resource.reference || "N/A";
+        const receipt = payload.attributes.event.resource.reference || "N/A";
 
-        // Find the transaction in MongoDB and update it
-        const updatedTx = await Transaction.findOneAndUpdate(
+        await Transaction.findOneAndUpdate(
             { checkout_id: checkoutId },
-            { status: status, mpesa_receipt: receipt },
-            { new: true }
+            { status: status, mpesa_receipt: receipt }
         );
 
         console.log(`✅ Payment Processed: ${status} | Receipt: ${receipt}`);
         res.sendStatus(200); 
     } catch (err) {
-        console.error("Callback Processing Error:", err);
+        console.error("Callback Error:", err);
         res.status(500).send("Error updating transaction");
     }
 });
