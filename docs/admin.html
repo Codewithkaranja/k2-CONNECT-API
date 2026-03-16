@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eclipse Ent | Payment Admin</title>
-    <link href="https://fonts.googleapis.com" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary: #2563eb;
@@ -23,7 +23,6 @@
             display: flex;
         }
 
-        /* Sidebar Styling */
         nav {
             width: 240px;
             height: 100vh;
@@ -31,15 +30,15 @@
             color: white;
             padding: 20px;
             position: fixed;
+            box-sizing: border-box;
         }
 
         main {
             margin-left: 280px;
             padding: 40px;
-            width: 100%;
+            width: calc(100% - 280px);
         }
 
-        /* Table Card Styling */
         .card {
             background: white;
             border-radius: 12px;
@@ -53,6 +52,7 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 30px;
+            flex-wrap: wrap;
         }
 
         table { width: 100%; border-collapse: collapse; }
@@ -68,7 +68,6 @@
 
         td { padding: 15px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem; }
 
-        /* Badge Styling */
         .badge {
             padding: 4px 10px;
             border-radius: 20px;
@@ -93,6 +92,26 @@
         }
 
         button:hover { opacity: 0.9; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .empty-message {
+            text-align: center;
+            padding: 40px;
+            color: #94a3b8;
+            font-style: italic;
+        }
+
+        .subscriber-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .subscriber-name {
+            font-weight: 600;
+        }
+        .subscriber-phone {
+            font-size: 0.85rem;
+            color: #64748b;
+        }
     </style>
 </head>
 <body>
@@ -107,7 +126,7 @@
     <main>
         <header>
             <h1>Payment History</h1>
-            <button onclick="loadTransactions()">🔄 Refresh Feed</button>
+            <button onclick="loadTransactions()" id="refreshBtn">🔄 Refresh Feed</button>
         </header>
 
         <div class="card">
@@ -122,7 +141,7 @@
                     </tr>
                 </thead>
                 <tbody id="transactionBody">
-                    <!-- Loaded via JS -->
+                    <tr><td colspan="5" class="empty-message">Loading transactions...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -130,32 +149,80 @@
 
     <script>
         async function loadTransactions() {
+            const btn = document.getElementById('refreshBtn');
+            const body = document.getElementById('transactionBody');
+            
+            // Disable button and show loading
+            btn.disabled = true;
+            btn.innerText = '🔄 Loading...';
+            body.innerHTML = '<tr><td colspan="5" class="empty-message">Fetching data...</td></tr>';
+
             try {
                 const response = await fetch('/api/transactions');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}`);
+                }
+                
                 const data = await response.json();
-                const body = document.getElementById('transactionBody');
+                
+                // Clear table
                 body.innerHTML = '';
 
+                if (!data || data.length === 0) {
+                    body.innerHTML = '<tr><td colspan="5" class="empty-message">No transactions found</td></tr>';
+                    return;
+                }
+
+                // Populate rows
                 data.forEach(tx => {
-                    const statusClass = `status-${tx.status.toLowerCase()}`;
+                    // Determine status class
+                    const status = tx.status || 'PENDING';
+                    const statusClass = `status-${status.toLowerCase()}`;
+                    
+                    // Format date
+                    const date = new Date(tx.createdAt);
+                    const formattedDate = date.toLocaleString('en-KE', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: true
+                    });
+
+                    // Build row
                     const row = `
                         <tr>
-                            <td style="color: #64748b;">${new Date(tx.createdAt).toLocaleString()}</td>
-                            <td><strong>${tx.phone}</strong></td>
-                            <td>KES ${tx.amount}</td>
-                            <td><span class="badge ${statusClass}">${tx.status}</span></td>
+                            <td style="color: #64748b;">${formattedDate}</td>
+                            <td>
+                                <div class="subscriber-info">
+                                    <span class="subscriber-name">${tx.name || '—'}</span>
+                                    <span class="subscriber-phone">${tx.phone || '—'}</span>
+                                </div>
+                            </td>
+                            <td><strong>KES ${tx.amount}</strong></td>
+                            <td><span class="badge ${statusClass}">${status}</span></td>
                             <td><code>${tx.mpesa_receipt || '—'}</code></td>
                         </tr>
                     `;
                     body.innerHTML += row;
                 });
+
             } catch (err) {
-                console.error("Failed to load table", err);
+                console.error('Failed to load transactions:', err);
+                body.innerHTML = `<tr><td colspan="5" class="empty-message">❌ Error loading data: ${err.message}</td></tr>`;
+            } finally {
+                // Re-enable button
+                btn.disabled = false;
+                btn.innerText = '🔄 Refresh Feed';
             }
         }
+
+        // Load immediately and set interval
         loadTransactions();
-        // Auto-refresh every 30 seconds
-        setInterval(loadTransactions, 30000);
+        setInterval(loadTransactions, 30000); // auto-refresh every 30 seconds
     </script>
 </body>
 </html>
