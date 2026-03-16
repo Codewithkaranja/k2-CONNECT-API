@@ -101,8 +101,7 @@ app.post("/api/pay", async (req,res)=>{
 
         const token = await getAccessToken();
 
-        let rawTill = process.env.MERCHANT_NUMBER.replace(/\D/g,'');
-        let till = `K${rawTill}`;
+        let till = process.env.MERCHANT_NUMBER;
 
         const payload = {
 
