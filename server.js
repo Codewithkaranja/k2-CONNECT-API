@@ -20,6 +20,7 @@ mongoose.connect(process.env.MONGO_URI)
 
 
 const transactionSchema = new mongoose.Schema({
+    name: String,
     phone: String,
     amount: String,
     status: { type: String, default: "PENDING" },
@@ -41,7 +42,7 @@ app.use(express.static("docs"));
 
 
 /* -------------------------------
-   3. Root Route (for Render health)
+   3. Root Route
 -------------------------------- */
 
 app.get("/", (req,res)=>{
@@ -91,10 +92,10 @@ app.post("/api/pay", async (req,res)=>{
 
     try{
 
-        const { phone, amount } = req.body;
+        const { name, phone, amount } = req.body;
 
-        if(!phone || !amount){
-            return res.status(400).json({error:"Phone and amount required"});
+        if(!name || !phone || !amount){
+            return res.status(400).json({error:"Name, phone and amount required"});
         }
 
         const token = await getAccessToken();
@@ -102,7 +103,11 @@ app.post("/api/pay", async (req,res)=>{
         /* Format phone number to 254XXXXXXXXX */
         let formattedPhone = phone.replace(/^0/, "254");
 
-        /* Use till exactly as provided */
+        /* Split full name */
+        const names = name.trim().split(" ");
+        const firstName = names[0];
+        const lastName = names.slice(1).join(" ") || "Customer";
+
         let till = process.env.MERCHANT_NUMBER;
 
         const payload = {
@@ -112,8 +117,8 @@ app.post("/api/pay", async (req,res)=>{
             till_number:till,
 
             subscriber:{
-                first_name:"Customer",
-                last_name:"User",
+                first_name:firstName,
+                last_name:lastName,
                 phone_number:formattedPhone,
                 email:"customer@example.com"
             },
@@ -150,6 +155,7 @@ app.post("/api/pay", async (req,res)=>{
         const checkoutId = response.headers.location.split("/").pop();
 
         const tx = new Transaction({
+            name,
             phone: formattedPhone,
             amount,
             checkout_id: checkoutId
