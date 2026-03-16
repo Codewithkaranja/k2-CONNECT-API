@@ -19,12 +19,7 @@ mongoose.connect(process.env.MONGO_URI)
 .catch(err => console.error("MongoDB Error:", err));
 
 
-/* -------------------------------
-   2. Transaction Schema
--------------------------------- */
-
 const transactionSchema = new mongoose.Schema({
-    name: String,
     phone: String,
     amount: String,
     status: { type: String, default: "PENDING" },
@@ -36,8 +31,9 @@ const transactionSchema = new mongoose.Schema({
 const Transaction = mongoose.model("Transaction", transactionSchema);
 
 
+
 /* -------------------------------
-   3. Middleware
+   2. Middleware
 -------------------------------- */
 
 app.use(cors());
@@ -46,7 +42,7 @@ app.use(express.static("docs"));
 
 
 /* -------------------------------
-   4. Root Route
+   3. Root Route (for Render health)
 -------------------------------- */
 
 app.get("/", (req,res)=>{
@@ -55,91 +51,68 @@ app.get("/", (req,res)=>{
 
 
 /* -------------------------------
-   5. Get OAuth Access Token
+   4. Get OAuth Access Token
 -------------------------------- */
 
-async function getAccessToken(){
+async function getAccessToken() {
 
-    try{
+    try {
 
-        const credentials = Buffer
-        .from(`${process.env.CLIENT_ID}:${process.env.CLIENT_SECRET}`)
-        .toString("base64");
+        const credentials = Buffer.from(
+            `${process.env.CLIENT_ID}:${process.env.CLIENT_SECRET}`
+        ).toString("base64");
 
         const response = await axios.post(
             "https://api.kopokopo.com/oauth/token",
-            qs.stringify({ grant_type:"client_credentials" }),
+            qs.stringify({ grant_type: "client_credentials" }),
             {
-                headers:{
-                    Authorization:`Basic ${credentials}`,
-                    "Content-Type":"application/x-www-form-urlencoded"
+                headers: {
+                    Authorization: `Basic ${credentials}`,
+                    "Content-Type": "application/x-www-form-urlencoded"
                 }
             }
         );
 
         return response.data.access_token;
 
-    }catch(error){
+    } catch(error){
 
         console.error("OAuth Error:", error.response?.data || error.message);
         throw new Error("Authentication failed");
 
     }
-
 }
 
 
+
 /* -------------------------------
-   6. Initiate STK Push
+   5. Initiate STK Push
 -------------------------------- */
 
 app.post("/api/pay", async (req,res)=>{
 
     try{
 
-        const { name, phone, amount } = req.body;
+        const { phone, amount } = req.body;
 
-        if(!name || !phone || !amount){
-            return res.status(400).json({
-                error:"Name, phone and amount required"
-            });
+        if(!phone || !amount){
+            return res.status(400).json({error:"Phone and amount required"});
         }
-
-        /* Normalize phone number */
-        let formattedPhone = phone
-        .replace(/\s+/g,'')
-        .replace(/^\+/,'')
-        .replace(/^0/,'254');
-
-        /* Prevent multiple pending STK requests */
-        const pending = await Transaction.findOne({
-            phone: formattedPhone,
-            status: "PENDING"
-        });
-
-        if(pending){
-            return res.status(409).json({
-                error:"Payment already pending for this phone"
-            });
-        }
-
-        /* Split full name */
-        const names = name.trim().split(" ");
-        const firstName = names[0];
-        const lastName = names.slice(1).join(" ") || "Customer";
 
         const token = await getAccessToken();
+
+        let till = process.env.MERCHANT_NUMBER;
 
         const payload = {
 
             payment_channel:"M-PESA STK Push",
 
-            till_number:process.env.MERCHANT_NUMBER,
+            till_number:till,
 
             subscriber:{
-                first_name:firstName,
-                last_name:lastName,
-                phone_number:formattedPhone,
+                first_name:"Customer",
+                last_name:"User",
+                phone_number:phone,
                 email:"customer@example.com"
             },
 
@@ -158,8 +131,6 @@ app.post("/api/pay", async (req,res)=>{
 
         };
 
-        console.log("STK Payload:", payload);
-
 
         const response = await axios.post(
             "https://api.kopokopo.com/api/v1/incoming_payments",
@@ -173,13 +144,13 @@ app.post("/api/pay", async (req,res)=>{
             }
         );
 
+
         const checkoutId = response.headers.location.split("/").pop();
 
         const tx = new Transaction({
-            name,
-            phone: formattedPhone,
+            phone,
             amount,
-            checkout_id: checkoutId
+            checkout_id:checkoutId
         });
 
         await tx.save();
@@ -189,12 +160,10 @@ app.post("/api/pay", async (req,res)=>{
             transactionId:tx._id
         });
 
+
     }catch(error){
 
-        console.error(
-            "STK Push Error:",
-            error.response?.data || error.message
-        );
+        console.error("STK Push Error:", error.response?.data || error.message);
 
         res.status(500).json({
             error:"Failed to initiate payment",
@@ -206,11 +175,12 @@ app.post("/api/pay", async (req,res)=>{
 });
 
 
+
 /* -------------------------------
-   7. Fetch Transactions
+   6. Fetch Transactions
 -------------------------------- */
 
-app.get("/api/transactions", async (req,res)=>{
+app.get("/api/transactions", async(req,res)=>{
 
     try{
 
@@ -222,20 +192,19 @@ app.get("/api/transactions", async (req,res)=>{
 
     }catch(error){
 
-        res.status(500).json({
-            error:"Failed to fetch transactions"
-        });
+        res.status(500).json({error:"Failed to fetch transactions"});
 
     }
 
 });
 
 
+
 /* -------------------------------
-   8. Payment Callback
+   7. Payment Callback
 -------------------------------- */
 
-app.post("/callback", async (req,res)=>{
+app.post("/callback", async(req,res)=>{
 
     try{
 
@@ -264,7 +233,7 @@ app.post("/callback", async (req,res)=>{
 
     }catch(error){
 
-        console.error("Callback Error:", error);
+        console.error("Callback Error:",error);
 
         res.status(500).send("Callback processing failed");
 
@@ -273,8 +242,9 @@ app.post("/callback", async (req,res)=>{
 });
 
 
+
 /* -------------------------------
-   9. Start Server
+   8. Start Server
 -------------------------------- */
 
 app.listen(PORT,()=>{
