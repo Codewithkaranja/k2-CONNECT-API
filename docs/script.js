@@ -1,52 +1,60 @@
-async function handlePayment() {
-    const phoneInput = document.getElementById('phone').value.trim();
-    const amount = document.getElementById('amount').value;
-    const status = document.getElementById('status');
-    const btn = document.getElementById('payBtn');
+async function handlePayment(){
 
-    // 1. Validation
-    if (!phoneInput || !amount) {
-        return alert("Please fill in both phone number and amount");
-    }
+const btn = document.getElementById("payBtn");
+const status = document.getElementById("status");
 
-    // Ensure phone starts with +254 (Kopo Kopo requirement)
-    let phone = phoneInput;
-    if (phone.startsWith('0')) {
-        phone = '+254' + phone.slice(1);
-    } else if (phone.startsWith('7') || phone.startsWith('1')) {
-        phone = '+254' + phone;
-    }
+const name = document.getElementById("name").value;
+const phone = document.getElementById("phone").value;
+const amount = document.getElementById("amount").value;
 
-    // 2. UI Feedback
-    btn.disabled = true;
-    btn.innerText = "Processing...";
-    status.style.color = "blue";
-    status.innerText = "Requesting M-Pesa prompt...";
+if(!name || !phone || !amount){
+    alert("Please fill in name, phone and amount");
+    return;
+}
 
-    try {
-        // Since frontend is hosted on the same server, '/api/pay' works perfectly
-        const response = await fetch('/api/pay', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone, amount })
-        });
+/* UI feedback */
+btn.disabled = true;
+btn.innerText = "Processing...";
 
-        const data = await response.json();
-        
-        if (response.ok) {
-            status.style.color = "green";
-            status.innerText = "✅ Request sent! Check your phone for the M-Pesa PIN prompt.";
-        } else {
-            status.style.color = "red";
-            status.innerText = "❌ Error: " + (data.error || "Payment failed");
-            console.error("Backend Error:", data);
-        }
-    } catch (err) {
-        status.style.color = "red";
-        status.innerText = "❌ Connection error. Please check your internet.";
-        console.error("Fetch Error:", err);
-    } finally {
-        btn.disabled = false;
-        btn.innerText = "Pay Now";
-    }
+status.style.color = "blue";
+status.innerText = "Requesting M-Pesa prompt...";
+
+try{
+
+const response = await fetch("/api/pay",{
+    method:"POST",
+    headers:{
+        "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+        name,
+        phone,
+        amount
+    })
+});
+
+const data = await response.json();
+
+if(response.ok){
+
+    status.style.color = "green";
+    status.innerText = "STK Push sent. Check your phone.";
+
+}else{
+
+    status.style.color = "red";
+    status.innerText = data.error || "Payment failed";
+
+}
+
+}catch(err){
+
+status.style.color = "red";
+status.innerText = "Server error";
+
+}
+
+btn.disabled = false;
+btn.innerText = "Pay Now";
+
 }

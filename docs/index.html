@@ -49,12 +49,16 @@ cursor:pointer;
 margin-top:10px;
 }
 
+button:disabled{
+background:#555;
+cursor:not-allowed;
+}
+
 #status{
 margin-top:20px;
 font-size:0.9rem;
 }
 </style>
-
 </head>
 
 <body>
@@ -64,13 +68,33 @@ font-size:0.9rem;
 <h2 style="margin-top:0;">Secure Payment</h2>
 <p style="color:#64748b;">Enter details to pay via M-Pesa</p>
 
-<input type="text" id="name" placeholder="Full Name">
+<input 
+type="text"
+id="name"
+placeholder="Full Name"
+required
+>
 
-<input type="text" id="phone" placeholder="Phone (e.g. 0712...)">
+<input 
+type="tel"
+id="phone"
+placeholder="Phone (e.g. 0712345678)"
+pattern="^(07|01|2547|2541)\d{8}$"
+title="Enter a valid Kenyan phone number"
+required
+>
 
-<input type="number" id="amount" placeholder="Amount in KES">
+<input 
+type="number"
+id="amount"
+placeholder="Amount in KES"
+min="1"
+required
+>
 
-<button onclick="handlePayment()">Pay Now</button>
+<button id="payBtn" onclick="handlePayment()">
+Pay Now
+</button>
 
 <div id="status"></div>
 
