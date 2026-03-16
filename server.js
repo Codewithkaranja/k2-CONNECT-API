@@ -31,7 +31,6 @@ const transactionSchema = new mongoose.Schema({
 const Transaction = mongoose.model("Transaction", transactionSchema);
 
 
-
 /* -------------------------------
    2. Middleware
 -------------------------------- */
@@ -84,7 +83,6 @@ async function getAccessToken() {
 }
 
 
-
 /* -------------------------------
    5. Initiate STK Push
 -------------------------------- */
@@ -101,6 +99,10 @@ app.post("/api/pay", async (req,res)=>{
 
         const token = await getAccessToken();
 
+        /* Format phone number to 254XXXXXXXXX */
+        let formattedPhone = phone.replace(/^0/, "254");
+
+        /* Use till exactly as provided */
         let till = process.env.MERCHANT_NUMBER;
 
         const payload = {
@@ -112,7 +114,7 @@ app.post("/api/pay", async (req,res)=>{
             subscriber:{
                 first_name:"Customer",
                 last_name:"User",
-                phone_number:phone,
+                phone_number:formattedPhone,
                 email:"customer@example.com"
             },
 
@@ -148,9 +150,9 @@ app.post("/api/pay", async (req,res)=>{
         const checkoutId = response.headers.location.split("/").pop();
 
         const tx = new Transaction({
-            phone,
+            phone: formattedPhone,
             amount,
-            checkout_id:checkoutId
+            checkout_id: checkoutId
         });
 
         await tx.save();
@@ -175,7 +177,6 @@ app.post("/api/pay", async (req,res)=>{
 });
 
 
-
 /* -------------------------------
    6. Fetch Transactions
 -------------------------------- */
@@ -197,7 +198,6 @@ app.get("/api/transactions", async(req,res)=>{
     }
 
 });
-
 
 
 /* -------------------------------
@@ -240,7 +240,6 @@ app.post("/callback", async(req,res)=>{
     }
 
 });
-
 
 
 /* -------------------------------
