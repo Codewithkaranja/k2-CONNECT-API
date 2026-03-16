@@ -55,13 +55,11 @@ app.get("/", (req,res)=>{
 
 
 /* -------------------------------
-   5. OAuth Token
+   5. OAuth Token (with timeout)
 -------------------------------- */
 
 async function getAccessToken(){
-
     try{
-
         const credentials = Buffer
         .from(`${process.env.CLIENT_ID}:${process.env.CLIENT_SECRET}`)
         .toString("base64");
@@ -73,19 +71,17 @@ async function getAccessToken(){
                 headers:{
                     Authorization:`Basic ${credentials}`,
                     "Content-Type":"application/x-www-form-urlencoded"
-                }
+                },
+                timeout: 10000 // 10 seconds timeout
             }
         );
 
         return response.data.access_token;
 
     }catch(error){
-
-        console.error("OAuth Error:", error.response?.data || error.message);
+        console.error("OAuth Failure:", error.response?.data || error.message);
         throw new Error("Authentication failed");
-
     }
-
 }
 
 
@@ -94,9 +90,7 @@ async function getAccessToken(){
 -------------------------------- */
 
 app.post("/api/pay", async (req,res)=>{
-
     try{
-
         const { name, phone, amount } = req.body;
 
         if(!name || !phone || !amount){
@@ -131,35 +125,27 @@ app.post("/api/pay", async (req,res)=>{
         const token = await getAccessToken();
 
         const payload = {
-
             payment_channel:"M-PESA STK Push",
-
             till_number:process.env.MERCHANT_NUMBER,
-
             subscriber:{
                 first_name:firstName,
                 last_name:lastName,
                 phone_number:formattedPhone,
                 email:"customer@example.com"
             },
-
             amount:{
                 currency:"KES",
                 value:amount
             },
-
             metadata:{
                 notes:"Website Purchase"
             },
-
             _links:{
                 callback_url:process.env.CALLBACK_URL
             }
-
         };
 
         console.log("STK Payload:", payload);
-
 
         const response = await axios.post(
             "https://api.kopokopo.com/api/v1/incoming_payments",
@@ -169,7 +155,8 @@ app.post("/api/pay", async (req,res)=>{
                     Authorization:`Bearer ${token}`,
                     Accept:"application/json",
                     "Content-Type":"application/json"
-                }
+                },
+                timeout: 10000
             }
         );
 
@@ -190,16 +177,12 @@ app.post("/api/pay", async (req,res)=>{
         });
 
     }catch(error){
-
         console.error("STK Push Error:", error.response?.data || error.message);
-
         res.status(500).json({
             error:"Failed to initiate payment",
             details:error.response?.data || error.message
         });
-
     }
-
 });
 
 
@@ -208,65 +191,61 @@ app.post("/api/pay", async (req,res)=>{
 -------------------------------- */
 
 app.get("/api/transactions", async (req,res)=>{
-
     try{
-
         const transactions = await Transaction
         .find()
         .sort({createdAt:-1});
 
         res.json(transactions);
-
     }catch(error){
-
         res.status(500).json({
             error:"Failed to fetch transactions"
         });
-
     }
-
 });
 
 
 /* -------------------------------
-   8. Payment Callback
+   8. Payment Callback (CRASH‑PROOF)
 -------------------------------- */
 
 app.post("/callback", async (req,res)=>{
-
     try{
+        // Log the entire callback for debugging
+        console.log("Callback received:", JSON.stringify(req.body, null, 2));
+
+        // If there's no body or no data, just acknowledge (KopoKopo may send empty health checks)
+        if(!req.body || !req.body.data){
+            console.log("Empty callback payload – ignoring");
+            return res.sendStatus(200);
+        }
 
         const payload = req.body.data;
-
         const checkoutId = payload.id;
+        const status = payload.attributes?.status;
+        const receipt = payload.attributes?.event?.resource?.reference || "N/A";
 
-        const status = payload.attributes.status;
-
-        const resource = payload.attributes.event.resource;
-
-        const receipt = resource?.reference || "N/A";
-
+        if(!checkoutId){
+            console.log("Callback missing checkoutId – ignoring");
+            return res.sendStatus(200);
+        }
 
         await Transaction.findOneAndUpdate(
-            { checkout_id:checkoutId },
+            { checkout_id: checkoutId },
             {
-                status:status,
-                mpesa_receipt:receipt
+                status: status,
+                mpesa_receipt: receipt
             }
         );
 
         console.log(`Payment Update: ${status} | Receipt: ${receipt}`);
-
         res.sendStatus(200);
 
     }catch(error){
-
+        // Log the error but still return 200 so KopoKopo doesn't retry forever
         console.error("Callback Error:", error);
-
-        res.status(500).send("Callback processing failed");
-
+        res.sendStatus(200);
     }
-
 });
 
 
