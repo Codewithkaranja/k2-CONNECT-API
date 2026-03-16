@@ -103,6 +103,17 @@ app.post("/api/pay", async (req,res)=>{
         /* Format phone number to 254XXXXXXXXX */
         let formattedPhone = phone.replace(/^0/, "254");
 
+        const pending = await Transaction.findOne({
+    phone: formattedPhone,
+    status: "PENDING"
+});
+
+if (pending) {
+    return res.status(409).json({
+        error: "Payment already pending for this phone"
+    });
+}
+
         /* Split full name */
         const names = name.trim().split(" ");
         const firstName = names[0];
