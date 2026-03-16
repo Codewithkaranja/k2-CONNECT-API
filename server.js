@@ -86,7 +86,7 @@ async function getAccessToken(){
 
 
 /* -------------------------------
-   6. Initiate STK Push
+   6. Initiate STK Push (with Fuliza fix)
 -------------------------------- */
 
 app.post("/api/pay", async (req,res)=>{
@@ -124,6 +124,9 @@ app.post("/api/pay", async (req,res)=>{
 
         const token = await getAccessToken();
 
+        /* CRITICAL FIX: Format amount properly for Fuliza */
+        const formattedAmount = parseFloat(amount).toFixed(2);
+
         const payload = {
             payment_channel:"M-PESA STK Push",
             till_number:process.env.MERCHANT_NUMBER,
@@ -135,7 +138,7 @@ app.post("/api/pay", async (req,res)=>{
             },
             amount:{
                 currency:"KES",
-                value:amount
+                value:formattedAmount
             },
             metadata:{
                 notes:"Website Purchase"
@@ -165,7 +168,7 @@ app.post("/api/pay", async (req,res)=>{
         const tx = new Transaction({
             name,
             phone: formattedPhone,
-            amount,
+            amount: formattedAmount, // store the formatted amount
             checkout_id: checkoutId
         });
 
